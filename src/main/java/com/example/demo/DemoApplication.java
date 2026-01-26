@@ -31,6 +31,13 @@ public class DemoApplication {
 	}
 
 	public static void main(String[] args) {
+		String dbUrl = System.getenv("DB_URL");
+		String dbUser = System.getenv("DB_USERNAME");
+		String dbPass = System.getenv("DB_PASSWORD");
+
+		System.out.println("DB_URL = " + dbUrl);
+		System.out.println("DB_USERNAME = " + dbUser);
+		System.out.println("DB_PASSWORD = " + (dbPass != null ? "***" : "null"));
 
 //		Dotenv dotenv = Dotenv.configure()
 //				.ignoreIfMissing()
@@ -39,11 +46,10 @@ public class DemoApplication {
 //		dotenv.entries().forEach(e ->
 //				System.setProperty(e.getKey(), e.getValue())
 //		);
-
 		SpringApplication.run(DemoApplication.class, args);
 	}
 
-	@GetMapping("/api/hello")
+	@GetMapping("/hello")
 	public String hello() {
 		return "Hello from your API";
 	}
