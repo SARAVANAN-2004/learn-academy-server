@@ -31,21 +31,20 @@ public class DemoApplication {
 	}
 
 	public static void main(String[] args) {
-		String dbUrl = System.getenv("DB_URL");
-		String dbUser = System.getenv("DB_USERNAME");
-		String dbPass = System.getenv("DB_PASSWORD");
+		String environment = System.getenv("ENVIRONMENT");
 
-		System.out.println("DB_URL = " + dbUrl);
-		System.out.println("DB_USERNAME = " + dbUser);
-		System.out.println("DB_PASSWORD = " + (dbPass != null ? "***" : "null"));
+		System.out.println("ENVIRONMENT = " + environment);
 
-//		Dotenv dotenv = Dotenv.configure()
-//				.ignoreIfMissing()
-//				.load();
-//
-//		dotenv.entries().forEach(e ->
-//				System.setProperty(e.getKey(), e.getValue())
-//		);
+		if (environment == null || !"production".equals(environment)) {
+
+			Dotenv dotenv = Dotenv.configure()
+					.ignoreIfMissing()
+					.load();
+
+			dotenv.entries().forEach(e ->
+					System.setProperty(e.getKey(), e.getValue())
+			);
+		}
 		SpringApplication.run(DemoApplication.class, args);
 	}
 
