@@ -3,11 +3,14 @@ package com.example.demo;
 
 import java.util.List;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.*;
 import io.github.cdimascio.dotenv.Dotenv;
+import org.springframework.beans.factory.annotation.Value;
+
 
 import com.example.demo.model.User;
 import com.example.demo.repository.UserRepository;
@@ -19,6 +22,13 @@ public class DemoApplication {
 
 	@Autowired
 	UserRepository repo;
+	@Value("${spring.datasource.url:NOT_FOUND}")
+	private String dbUrl;
+
+	@PostConstruct
+	public void checkDbUrl() {
+		System.out.println("DB URL FROM SPRING = " + dbUrl);
+	}
 
 	public static void main(String[] args) {
 
