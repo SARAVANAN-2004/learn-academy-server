@@ -10,6 +10,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.*;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
+
 
 
 import com.example.learnacademy.model.User;
@@ -24,11 +26,31 @@ public class learnacademyApplication {
 	UserRepository repo;
 	@Value("${spring.datasource.url:NOT_FOUND}")
 	private String dbUrl;
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
 
 	@PostConstruct
 	public void checkDbUrl() {
 		System.out.println("DB URL FROM SPRING = " + dbUrl);
 	}
+	@PostConstruct
+	public void printTables() {
+		try {
+			List<String> tables = jdbcTemplate.queryForList(
+					"SELECT table_name FROM information_schema.tables WHERE table_schema='public'",
+					String.class
+			);
+
+			System.out.println("✅ TABLES IN CONNECTED DATABASE:");
+			tables.forEach(t -> System.out.println("👉 " + t));
+
+		} catch (Exception e) {
+			System.out.println("❌ Failed to read tables:");
+			e.printStackTrace();
+		}
+	}
+
 
 	public static void main(String[] args) {
 		String environment = System.getenv("ENVIRONMENT");
@@ -53,15 +75,4 @@ public class learnacademyApplication {
 		return "Hello from your API";
 	}
 
-	// Get all users
-	@GetMapping("/users")
-	public List<User> getUsers() {
-		return repo.findAll();
-	}
-
-	// Create user
-	@PostMapping("/users")
-	public User createUser(@RequestBody User user) {
-		return repo.save(user);
-	}
 }
