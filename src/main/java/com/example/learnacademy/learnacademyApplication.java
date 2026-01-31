@@ -1,5 +1,5 @@
 
-package com.example.demo;
+package com.example.learnacademy;
 
 import java.util.List;
 
@@ -12,13 +12,13 @@ import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.beans.factory.annotation.Value;
 
 
-import com.example.demo.model.User;
-import com.example.demo.repository.UserRepository;
+import com.example.learnacademy.model.User;
+import com.example.learnacademy.repository.UserRepository;
 
 @SpringBootApplication
 @RestController
 @RequestMapping("/api")
-public class DemoApplication {
+public class learnacademyApplication {
 
 	@Autowired
 	UserRepository repo;
@@ -45,7 +45,7 @@ public class DemoApplication {
 					System.setProperty(e.getKey(), e.getValue())
 			);
 		}
-		SpringApplication.run(DemoApplication.class, args);
+		SpringApplication.run(learnacademyApplication.class, args);
 	}
 
 	@GetMapping("/hello")
