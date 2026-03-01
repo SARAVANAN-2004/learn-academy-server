@@ -11,6 +11,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 public class SecurityConfig {
@@ -23,12 +24,20 @@ public class SecurityConfig {
 
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(cors -> {})   // enable CORS
+                .cors(cors -> {})
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/oauth2/**").permitAll()
                         .anyRequest().authenticated()
                 )
+
+                // ⭐ IMPORTANT FOR SPA
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        })
+                )
+
                 .oauth2Login(oauth -> oauth
                         .successHandler((request, response, authentication) -> {
 
@@ -50,6 +59,7 @@ public class SecurityConfig {
                             );
                         })
                 )
+
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .logoutSuccessUrl("https://learn-academy-web.vercel.app")
@@ -72,7 +82,7 @@ public class SecurityConfig {
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
                         .allowedOrigins(
-                                "http://localhost:3000",
+                                "http://localhost:4200",
                                 "https://learn-academy-web.vercel.app"
                         )
                         .allowedMethods("*")

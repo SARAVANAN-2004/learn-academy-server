@@ -6,12 +6,15 @@ import com.example.learnacademy.service.AuthService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.oauth2.core.user.OAuth2User;
+
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -41,10 +44,16 @@ public class AuthController {
                 new UsernamePasswordAuthenticationToken(
                         body.get("email"),
                         null,
-                        null
+                        List.of()   // empty authorities
                 );
 
-        SecurityContextHolder.getContext().setAuthentication(auth);
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(auth);
+
+        SecurityContextHolder.setContext(context);
+
+        request.getSession(true)
+                .setAttribute("SPRING_SECURITY_CONTEXT", context);
 
         // VERY IMPORTANT PART
         request.getSession(true)
