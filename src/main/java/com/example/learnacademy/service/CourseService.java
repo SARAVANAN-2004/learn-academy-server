@@ -6,6 +6,7 @@ import com.example.learnacademy.model.UserCourse;
 import com.example.learnacademy.repository.CourseContentRepository;
 import com.example.learnacademy.repository.CourseRepository;
 import com.example.learnacademy.repository.UserCourseRepository;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -16,27 +17,40 @@ import java.util.stream.Collectors;
 @Service
 public class CourseService {
 
-    @Autowired CourseRepository courseRepo;
-    @Autowired UserCourseRepository userCourseRepo;
-    @Autowired CourseContentRepository contentRepo;
-    @Autowired JdbcTemplate jdbc;
+    @Autowired
+    CourseRepository courseRepo;
+
+    @Autowired
+    UserCourseRepository userCourseRepo;
+
+    @Autowired
+    CourseContentRepository contentRepo;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    // ================= GET ALL COURSES =================
 
     public List<Course> getAllCourses(){
         return courseRepo.findAll();
     }
 
-    public List<Course> myLearning(Integer userId){
+    // ================= MY LEARNING =================
+
+    public List<Course> myLearning(Long userId){
 
         List<UserCourse> uc = userCourseRepo.findByUserId(userId);
 
-        List<Integer> ids = uc.stream()
+        List<Long> ids = uc.stream()
                 .map(UserCourse::getCourseId)
                 .collect(Collectors.toList());
 
         return courseRepo.findAllById(ids);
     }
 
-    public Map<String,Object> viewCourse(Integer courseId){
+    // ================= VIEW COURSE =================
+
+    public Map<String,Object> viewCourse(Long courseId){
 
         Course course = courseRepo.findById(courseId).orElseThrow();
 
@@ -49,34 +63,74 @@ public class CourseService {
         return map;
     }
 
+    // ================= CREATE COURSE =================
+
     public Map<String,Object> createCourse(Map<String,Object> b){
 
-        Integer id = jdbc.queryForObject("""
-        INSERT INTO courses(user_id,course_type,title,image_url,category,description,
-        requirements,target_audience,time_commitment,instructor,original_price,price,rating)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
-        """, Integer.class,
-                b.get("userId"), b.get("courseType"), b.get("title"), b.get("imageUrl"),
-                b.get("category"), b.get("learnObjectives"), b.get("requirements"),
-                b.get("whoIsThisFor"), b.get("timeCommitment"), b.get("instructorName"),
-                b.get("originalPrice"), b.get("discountedPrice"), b.get("rating"));
+        Long id = jdbc.queryForObject("""
+        INSERT INTO courses(
+            user_id,
+            course_type,
+            title,
+            image_url,
+            category,
+            description,
+            requirements,
+            target_audience,
+            time_commitment,
+            instructor,
+            original_price,
+            price,
+            rating
+        )
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        RETURNING id
+        """,
+                Long.class,
+                b.get("userId"),
+                b.get("courseType"),
+                b.get("title"),
+                b.get("imageUrl"),
+                b.get("category"),
+                b.get("learnObjectives"),
+                b.get("requirements"),
+                b.get("whoIsThisFor"),
+                b.get("timeCommitment"),
+                b.get("instructorName"),
+                b.get("originalPrice"),
+                b.get("discountedPrice"),
+                b.get("rating")
+        );
 
-        return Map.of("success",true,"courseId",id);
+        return Map.of(
+                "success", true,
+                "courseId", id
+        );
     }
+
+    // ================= CREATE COURSE CONTENT =================
 
     public void createContent(Map<String,Object> body){
 
         jdbc.update("""
         INSERT INTO course_contents(user_id,course_id,content)
         VALUES(?,?,?)
-        """, body.get("userId"), body.get("courseId"), body.toString());
+        """,
+                body.get("userId"),
+                body.get("courseId"),
+                body.toString());
     }
 
-    public void enroll(Integer userId,Integer courseId){
+    // ================= ENROLL =================
+
+    public void enroll(Long userId, Long courseId){
 
         jdbc.update("""
         INSERT INTO user_courses(user_id,course_id)
-        VALUES(?,?) ON CONFLICT DO NOTHING
-        """, userId,courseId);
+        VALUES(?,?)
+        ON CONFLICT DO NOTHING
+        """,
+                userId,
+                courseId);
     }
 }

@@ -6,10 +6,11 @@ import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 
-public interface CourseRepository extends JpaRepository<Course, Integer> {
+public interface CourseRepository extends JpaRepository<Course, Long> {
 
     @Query(value = "SELECT * FROM courses ORDER BY created_at DESC", nativeQuery = true)
     List<Course> findAllLatest();
 
-    List<Course> findByUserId(Integer userId);
+    List<Course> findByUserId(Long userId);
+
 }

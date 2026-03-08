@@ -9,10 +9,10 @@ public class Course {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(name = "user_id")
-    private Integer userId;
+    private Long userId;
 
     @Column(name = "course_type")
     private String courseType;
@@ -47,11 +47,11 @@ public class Course {
 
     // ===== Getters =====
 
-    public Integer getId() {
+    public Long getId() {
         return id;
     }
 
-    public Integer getUserId() {
+    public Long getUserId() {
         return userId;
     }
 
@@ -105,11 +105,11 @@ public class Course {
 
     // ===== Setters =====
 
-    public void setId(Integer id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public void setUserId(Integer userId) {
+    public void setUserId(Long userId) {
         this.userId = userId;
     }
 

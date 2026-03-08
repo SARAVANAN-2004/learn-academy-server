@@ -8,28 +8,28 @@ public class CourseContent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(name = "user_id")
-    private Integer userId;
+    private Long userId;
 
     @Column(name = "course_id")
-    private Integer courseId;
+    private Long courseId;
 
     @Column(columnDefinition = "jsonb")
     private String content;
 
     // ===== Getters =====
 
-    public Integer getId() {
+    public Long getId() {
         return id;
     }
 
-    public Integer getUserId() {
+    public Long getUserId() {
         return userId;
     }
 
-    public Integer getCourseId() {
+    public Long getCourseId() {
         return courseId;
     }
 
@@ -39,15 +39,15 @@ public class CourseContent {
 
     // ===== Setters =====
 
-    public void setId(Integer id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public void setUserId(Integer userId) {
+    public void setUserId(Long userId) {
         this.userId = userId;
     }
 
-    public void setCourseId(Integer courseId) {
+    public void setCourseId(Long courseId) {
         this.courseId = courseId;
     }
 

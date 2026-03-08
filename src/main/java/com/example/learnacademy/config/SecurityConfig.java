@@ -11,6 +11,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+
 import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
@@ -25,13 +26,19 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
+
                 .authorizeHttpRequests(auth -> auth
+
+                        // PUBLIC APIs
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/oauth2/**").permitAll()
+                        .requestMatchers("/api/hello").permitAll()   // ⭐ public endpoint
+
+                        // PROTECTED APIs
                         .anyRequest().authenticated()
                 )
 
-                // ⭐ IMPORTANT FOR SPA
+                // SPA handling (avoid redirect loops)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -80,6 +87,7 @@ public class SecurityConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
+
                 registry.addMapping("/**")
                         .allowedOrigins(
                                 "http://localhost:4200",
