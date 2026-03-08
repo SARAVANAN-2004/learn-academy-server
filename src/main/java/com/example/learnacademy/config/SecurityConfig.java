@@ -32,7 +32,7 @@ public class SecurityConfig {
                         // PUBLIC APIs
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/oauth2/**").permitAll()
-                        .requestMatchers("/api/hello").permitAll()   // ⭐ public endpoint
+                        .requestMatchers("/api/hello").permitAll()
 
                         // PROTECTED APIs
                         .anyRequest().authenticated()
