@@ -10,6 +10,8 @@ import com.example.learnacademy.repository.UserCourseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -110,15 +112,28 @@ public class CourseService {
 
     // ================= CREATE COURSE CONTENT =================
 
+
     public void createContent(Map<String,Object> body){
 
-        jdbc.update("""
+        try {
+            Long userId = Long.valueOf(body.get("userId").toString());
+            Long courseId = Long.valueOf(body.get("courseId").toString());
+
+            ObjectMapper mapper = new ObjectMapper();
+            String json = mapper.writeValueAsString(body);
+
+            jdbc.update("""
         INSERT INTO course_contents(user_id,course_id,content)
-        VALUES(?,?,?)
+        VALUES(?,?,?::jsonb)
         """,
-                body.get("userId"),
-                body.get("courseId"),
-                body.toString());
+                    userId,
+                    courseId,
+                    json);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Error inserting course content");
+        }
     }
 
     // ================= ENROLL =================
