@@ -15,6 +15,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Array;
+import java.sql.Connection;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -39,8 +41,22 @@ public class CourseService {
     JdbcTemplate jdbc;
 
 
-    public List<Course> getAllCourses(){
-        return courseRepo.findAll();
+    public List<Course> getAllCourses(Long userId) {
+
+
+        List<Course> allCourses = courseRepo.findAll();
+
+        // 2. Get enrolled course IDs
+        List<UserCourse> enrolledCourses = userCourseRepo.findByUserId(userId);
+
+        Set<Long> enrolledCourseIds = enrolledCourses.stream()
+                .map(UserCourse::getCourseId)
+                .collect(Collectors.toSet());
+
+        // 3. Filter courses
+        return allCourses.stream()
+                .filter(course -> !enrolledCourseIds.contains(course.getId()))
+                .collect(Collectors.toList());
     }
 
 
@@ -82,9 +98,23 @@ public class CourseService {
 
     // ================= CREATE COURSE =================
 
-    public Map<String,Object> createCourse(Map<String,Object> b){
+    public Map<String, Object> createCourse(Map<String, Object> b) {
 
-        Long id = jdbc.queryForObject("""
+        try {
+            Long userId = Long.valueOf(b.get("userId").toString());
+
+            Integer originalPrice = Integer.valueOf(b.get("originalPrice").toString());
+            Integer discountedPrice = Integer.valueOf(b.get("discountedPrice").toString());
+            Integer rating = Integer.valueOf(b.get("rating").toString());
+
+            // 🔥 Convert List -> SQL Array
+            List<String> badgesList = (List<String>) b.get("badges");
+
+            Array badgesArray = jdbc.execute((Connection con) -> {
+                return con.createArrayOf("text", badgesList.toArray());
+            });
+
+            Long id = jdbc.queryForObject("""
         INSERT INTO courses(
             user_id,
             course_type,
@@ -98,31 +128,37 @@ public class CourseService {
             instructor,
             original_price,
             price,
-            rating
+            rating,
+            badges
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         RETURNING id
         """,
-                Long.class,
-                b.get("userId"),
-                b.get("courseType"),
-                b.get("title"),
-                b.get("imageUrl"),
-                b.get("category"),
-                b.get("learnObjectives"),
-                b.get("requirements"),
-                b.get("whoIsThisFor"),
-                b.get("timeCommitment"),
-                b.get("instructorName"),
-                b.get("originalPrice"),
-                b.get("discountedPrice"),
-                b.get("rating")
-        );
+                    Long.class,
+                    userId,
+                    b.get("courseType"),
+                    b.get("title"),
+                    b.get("imageUrl"),
+                    b.get("category"),
+                    b.get("learnObjectives"),
+                    b.get("requirements"),
+                    b.get("whoIsThisFor"),
+                    b.get("timeCommitment"),
+                    b.get("instructorName"),
+                    originalPrice,
+                    discountedPrice,
+                    rating,
+                    badgesArray
+            );
 
-        return Map.of(
-                "success", true,
-                "courseId", id
-        );
+            return Map.of(
+                    "success", true,
+                    "courseId", id
+            );
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
 

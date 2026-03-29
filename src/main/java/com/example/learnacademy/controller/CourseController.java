@@ -50,7 +50,7 @@ public class CourseController {
 
         Long userId = getUserId(authentication);
 
-        List<Course> courses = service.getAllCourses();
+        List<Course> courses = service.getAllCourses(userId);
 
         Map<String, Object> res = new HashMap<>();
         res.put("userId", userId);
