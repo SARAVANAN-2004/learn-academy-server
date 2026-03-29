@@ -23,7 +23,6 @@ public class CourseController {
     @Autowired
     private UserRepository userRepo;
 
-    // ================= HELPER METHOD =================
 
     private Long getUserId(Authentication authentication) {
 
@@ -42,10 +41,9 @@ public class CourseController {
         User user = userRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        return user.getId(); // Long
+        return user.getId();
     }
 
-    // ================= DASHBOARD =================
 
     @GetMapping("/dashboard")
     public Map<String, Object> dashboard(Authentication authentication) {
@@ -61,8 +59,6 @@ public class CourseController {
         return res;
     }
 
-    // ================= MY LEARNING =================
-
     @GetMapping("/mylearning")
     public List<Course> myLearning(Authentication authentication) {
 
@@ -71,14 +67,17 @@ public class CourseController {
         return service.myLearning(userId);
     }
 
-    // ================= VIEW COURSE =================
 
     @GetMapping("/viewCourse")
-    public Map<String, Object> viewCourse(@RequestParam Long courseId) {
-        return service.viewCourse(courseId);
+    public Map<String, Object> viewCourse(
+            @RequestParam Long courseId,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+
+        return service.viewCourse(courseId, userId);
     }
 
-    // ================= CREATE COURSE =================
 
     @PostMapping("/create-course")
     public Map<String, Object> createCourse(
@@ -92,7 +91,6 @@ public class CourseController {
         return service.createCourse(body);
     }
 
-    // ================= CREATE COURSE CONTENT =================
 
     @PostMapping("/create-course-content")
     public Map<String, String> createContent(
@@ -105,7 +103,10 @@ public class CourseController {
 
         service.createContent(body);
 
-        return Map.of("success", "true");
+        Map<String, String> res = new HashMap<>();
+        res.put("success", "true");
+
+        return res;
     }
 
     // ================= ENROLL =================
@@ -121,6 +122,30 @@ public class CourseController {
 
         service.enroll(userId, courseId);
 
-        return Map.of("message", "Enrolled successfully!");
+        Map<String, String> res = new HashMap<>();
+        res.put("message", "Enrolled successfully!");
+
+        return res;
+    }
+
+    // ================= TOGGLE LESSON =================
+
+    @PostMapping("/toggle-lesson")
+    public Map<String, String> toggleLesson(
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+
+        Long courseId = Long.valueOf(body.get("courseId").toString());
+        String lessonId = body.get("lessonId").toString();
+        Boolean completed = Boolean.valueOf(body.get("completed").toString());
+
+        service.toggleLesson(userId, courseId, lessonId, completed);
+
+        Map<String, String> res = new HashMap<>();
+        res.put("message", "Updated");
+
+        return res;
     }
 }

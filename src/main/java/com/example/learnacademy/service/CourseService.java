@@ -3,16 +3,20 @@ package com.example.learnacademy.service;
 import com.example.learnacademy.model.Course;
 import com.example.learnacademy.model.CourseContent;
 import com.example.learnacademy.model.UserCourse;
+import com.example.learnacademy.model.LessonProgress;
+
 import com.example.learnacademy.repository.CourseContentRepository;
 import com.example.learnacademy.repository.CourseRepository;
 import com.example.learnacademy.repository.UserCourseRepository;
+import com.example.learnacademy.repository.LessonProgressRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,15 +33,16 @@ public class CourseService {
     CourseContentRepository contentRepo;
 
     @Autowired
+    LessonProgressRepository progressRepo;
+
+    @Autowired
     JdbcTemplate jdbc;
 
-    // ================= GET ALL COURSES =================
 
     public List<Course> getAllCourses(){
         return courseRepo.findAll();
     }
 
-    // ================= MY LEARNING =================
 
     public List<Course> myLearning(Long userId){
 
@@ -50,17 +55,27 @@ public class CourseService {
         return courseRepo.findAllById(ids);
     }
 
-    // ================= VIEW COURSE =================
-
-    public Map<String,Object> viewCourse(Long courseId){
+    public Map<String,Object> viewCourse(Long courseId, Long userId){
 
         Course course = courseRepo.findById(courseId).orElseThrow();
-
         CourseContent content = contentRepo.findByCourseId(courseId);
+
+        List<LessonProgress> progressList =
+                progressRepo.findByUserIdAndCourseId(userId, courseId);
+
+        List<Map<String, Object>> progress = progressList.stream()
+                .map(p -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("lesson_id", p.getLessonId());
+                    m.put("completed", p.getCompleted());
+                    return m;
+                })
+                .collect(Collectors.toList());
 
         Map<String,Object> map = new HashMap<>();
         map.put("courseDetails", course);
         map.put("courseContent", content);
+        map.put("progress", progress);
 
         return map;
     }
@@ -110,7 +125,6 @@ public class CourseService {
         );
     }
 
-    // ================= CREATE COURSE CONTENT =================
 
 
     public void createContent(Map<String,Object> body){
@@ -120,7 +134,29 @@ public class CourseService {
             Long courseId = Long.valueOf(body.get("courseId").toString());
 
             ObjectMapper mapper = new ObjectMapper();
-            String json = mapper.writeValueAsString(body);
+
+            List<Map<String, Object>> sections =
+                    (List<Map<String, Object>>) body.get("sections");
+
+            for (int i = 0; i < sections.size(); i++) {
+
+                Map<String, Object> section = sections.get(i);
+                List<Map<String, Object>> lessons =
+                        (List<Map<String, Object>>) section.get("lessons");
+
+                for (int j = 0; j < lessons.size(); j++) {
+
+                    Map<String, Object> lesson = lessons.get(j);
+
+                    // ✅ Generate unique lesson_id
+                    String lessonId = "S" + (i + 1) + "L" + (j + 1);
+
+                    lesson.put("lesson_id", lessonId);
+                }
+            }
+
+            // ✅ Convert updated sections to JSON
+            String json = mapper.writeValueAsString(sections);
 
             jdbc.update("""
         INSERT INTO course_contents(user_id,course_id,content)
@@ -147,5 +183,22 @@ public class CourseService {
         """,
                 userId,
                 courseId);
+    }
+
+    // ================= TOGGLE LESSON =================
+
+    public void toggleLesson(Long userId, Long courseId, String lessonId, Boolean completed){
+
+        LessonProgress progress = progressRepo
+                .findByUserIdAndCourseIdAndLessonId(userId, courseId, lessonId)
+                .orElse(new LessonProgress());
+
+        progress.setUserId(userId);
+        progress.setCourseId(courseId);
+        progress.setLessonId(lessonId);
+        progress.setCompleted(completed);
+        progress.setCompletedAt(LocalDateTime.now());
+
+        progressRepo.save(progress);
     }
 }
