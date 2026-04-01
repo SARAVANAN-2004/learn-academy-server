@@ -278,7 +278,7 @@ public class CourseService {
                 """
                 SELECT COALESCE(SUM(jsonb_array_length(section->'lessons')),0)
                 FROM course_contents,
-                jsonb_array_elements(content) AS section
+                jsonb_array_elements(content->'sections') AS section
                 WHERE course_id IN (""" + inSql + ")",
                 params,
                 Integer.class
