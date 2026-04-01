@@ -292,7 +292,7 @@ public class CourseService {
 
         double avgCompletion = 0;
         if (totalLessons != null && totalLessons != 0) {
-            avgCompletion = (completedLessons * 100.0) / totalLessons;
+            avgCompletion = Math.min(100, (completedLessons * 100.0) / totalLessons);
         }
 
         List<Map<String, Object>> courseAnalytics = jdbc.query("""
