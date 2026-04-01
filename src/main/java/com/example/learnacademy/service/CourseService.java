@@ -237,4 +237,156 @@ public class CourseService {
 
         progressRepo.save(progress);
     }
+
+    public Map<String, Object> instructorDashboard(Long instructorId) {
+
+        Map<String, Object> result = new HashMap<>();
+
+        List<Course> courses = courseRepo.findByUserId(instructorId);
+
+        List<Long> courseIds = courses.stream()
+                .map(Course::getId)
+                .toList();
+
+        result.put("totalCourses", courses.size());
+
+        if (courseIds.isEmpty()) {
+            result.put("totalStudents", 0);
+            result.put("totalLessons", 0);
+            result.put("completedLessons", 0);
+            result.put("avgCompletion", 0);
+            result.put("courseAnalytics", List.of());
+            result.put("studentGrowth", List.of());
+            result.put("engagementTrend", List.of());
+            result.put("growthRate", 0);
+            result.put("peakActivityTime", null);
+            result.put("topCourse", null);
+            result.put("topCourses", List.of());
+            return result;
+        }
+
+        String inSql = String.join(",", Collections.nCopies(courseIds.size(), "?"));
+        Object[] params = courseIds.toArray();
+
+        Integer totalStudents = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_courses WHERE course_id IN (" + inSql + ")",
+                params,
+                Integer.class
+        );
+
+        Integer totalLessons = jdbc.queryForObject(
+                """
+                SELECT COALESCE(SUM(jsonb_array_length(section->'lessons')),0)
+                FROM course_contents,
+                jsonb_array_elements(content) AS section
+                WHERE course_id IN (""" + inSql + ")",
+                params,
+                Integer.class
+        );
+
+        Integer completedLessons = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lesson_progress WHERE course_id IN (" + inSql + ") AND completed = true",
+                params,
+                Integer.class
+        );
+
+        double avgCompletion = 0;
+        if (totalLessons != null && totalLessons != 0) {
+            avgCompletion = (completedLessons * 100.0) / totalLessons;
+        }
+
+        List<Map<String, Object>> courseAnalytics = jdbc.query("""
+        SELECT 
+            c.id,
+            c.title,
+            COUNT(DISTINCT uc.user_id) AS students,
+            COUNT(lp.id) FILTER (WHERE lp.completed = true) AS completed_lessons
+        FROM courses c
+        LEFT JOIN user_courses uc ON c.id = uc.course_id
+        LEFT JOIN lesson_progress lp ON c.id = lp.course_id
+        WHERE c.user_id = ?
+        GROUP BY c.id, c.title
+    """, (rs, rowNum) -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("courseId", rs.getLong("id"));
+            m.put("title", rs.getString("title"));
+            m.put("students", rs.getInt("students"));
+            m.put("completedLessons", rs.getInt("completed_lessons"));
+            return m;
+        }, instructorId);
+
+        List<Integer> studentGrowth = jdbc.query(
+                "SELECT COUNT(*) FROM user_courses WHERE course_id IN (" + inSql + ") " +
+                        "AND DATE(enrolled_at) >= CURRENT_DATE - INTERVAL '6 days' " +
+                        "GROUP BY DATE(enrolled_at) ORDER BY DATE(enrolled_at)",
+                params,
+                (rs, rowNum) -> rs.getInt(1)
+        );
+
+        List<Integer> engagementTrend = jdbc.query(
+                "SELECT COUNT(*) FROM lesson_progress WHERE course_id IN (" + inSql + ") " +
+                        "AND completed = true AND completed_at >= CURRENT_DATE - INTERVAL '6 days' " +
+                        "GROUP BY DATE(completed_at) ORDER BY DATE(completed_at)",
+                params,
+                (rs, rowNum) -> rs.getInt(1)
+        );
+
+        double growthRate = 0;
+        if (studentGrowth.size() > 1) {
+            growthRate = ((studentGrowth.get(studentGrowth.size() - 1) - studentGrowth.get(0)) * 100.0)
+                    / Math.max(1, studentGrowth.get(0));
+        }
+
+        String peakActivityTime = jdbc.query(
+                "SELECT TO_CHAR(completed_at, 'HH12:MI AM') AS time " +
+                        "FROM lesson_progress WHERE course_id IN (" + inSql + ") " +
+                        "AND completed = true GROUP BY time ORDER BY COUNT(*) DESC LIMIT 1",
+                params,
+                rs -> rs.next() ? rs.getString("time") : null
+        );
+
+        Map<String, Object> topCourse = jdbc.queryForObject("""
+        SELECT c.title, COUNT(uc.user_id) AS students
+        FROM courses c
+        LEFT JOIN user_courses uc ON c.id = uc.course_id
+        WHERE c.user_id = ?
+        GROUP BY c.id
+        ORDER BY students DESC
+        LIMIT 1
+    """, (rs, rowNum) -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("title", rs.getString("title"));
+            m.put("students", rs.getInt("students"));
+            return m;
+        }, instructorId);
+
+        List<Map<String, Object>> topCourses = jdbc.query("""
+        SELECT c.title, COUNT(uc.user_id) AS students
+        FROM courses c
+        LEFT JOIN user_courses uc ON c.id = uc.course_id
+        WHERE c.user_id = ?
+        GROUP BY c.id
+        ORDER BY students DESC
+        LIMIT 5
+    """, (rs, rowNum) -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("title", rs.getString("title"));
+            m.put("students", rs.getInt("students"));
+            return m;
+        }, instructorId);
+
+        result.put("totalStudents", totalStudents);
+        result.put("totalLessons", totalLessons);
+        result.put("completedLessons", completedLessons);
+        result.put("avgCompletion", avgCompletion);
+        result.put("courseAnalytics", courseAnalytics);
+        result.put("studentGrowth", studentGrowth);
+        result.put("engagementTrend", engagementTrend);
+        result.put("growthRate", growthRate);
+        result.put("peakActivityTime", peakActivityTime);
+        result.put("topCourse", topCourse);
+        result.put("topCourses", topCourses);
+
+        return result;
+    }
 }

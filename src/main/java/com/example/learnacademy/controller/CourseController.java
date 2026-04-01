@@ -148,4 +148,12 @@ public class CourseController {
 
         return res;
     }
+
+    @GetMapping("/instructor-dashboard")
+    public Map<String, Object> instructorDashboard(Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+
+        return service.instructorDashboard(userId);
+    }
 }
