@@ -2,6 +2,10 @@ package com.example.learnacademy.model;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "courses")
@@ -44,6 +48,13 @@ public class Course {
     private BigDecimal price;
 
     private BigDecimal rating;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(columnDefinition = "text[]")
+    private String[] badges;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
     // ===== Getters =====
 
@@ -103,6 +114,14 @@ public class Course {
         return rating;
     }
 
+    public String[] getBadges() {
+        return badges;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
     // ===== Setters =====
 
     public void setId(Long id) {
@@ -159,5 +178,13 @@ public class Course {
 
     public void setRating(BigDecimal rating) {
         this.rating = rating;
+    }
+
+    public void setBadges(String[] badges) {
+        this.badges = badges;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }

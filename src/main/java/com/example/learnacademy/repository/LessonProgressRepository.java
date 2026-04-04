@@ -12,4 +12,12 @@ public interface LessonProgressRepository extends JpaRepository<LessonProgress, 
             Long userId, Long courseId, String lessonId);
 
     List<LessonProgress> findByUserIdAndCourseId(Long userId, Long courseId);
+
+    List<LessonProgress> findByCourseIdIn(List<Long> courseIds);
+
+    void deleteByCourseId(Long courseId);
+
+    void deleteByCourseIdIn(List<Long> courseIds);
+
+    void deleteByUserIdAndCourseId(Long userId, Long courseId);
 }

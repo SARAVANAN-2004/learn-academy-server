@@ -1,6 +1,5 @@
 package com.example.learnacademy.controller;
 
-import com.example.learnacademy.model.User;
 import com.example.learnacademy.repository.UserRepository;
 import com.example.learnacademy.service.AuthService;
 
@@ -64,22 +63,27 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public User currentUser(Authentication authentication) {
+    public Map<String, Object> currentUser(Authentication authentication) {
 
-        if (authentication == null) {
-            return null;
-        }
-
-        String email;
-
-        if (authentication.getPrincipal() instanceof OAuth2User oAuth2User) {
-            email = oAuth2User.getAttribute("email");
-        } else {
-            email = authentication.getName();
-        }
+        String email = getAuthenticatedEmail(authentication);
 
         System.out.println("Authenticated email: " + email);
 
-        return userRepo.findByEmail(email).orElse(null);
+        return userRepo.findByEmail(email)
+                .map(user -> service.getPersonalDetails(user.getId()))
+                .orElse(null);
     }
+
+    private String getAuthenticatedEmail(Authentication authentication) {
+        if (authentication == null) {
+            throw new RuntimeException("User is not authenticated");
+        }
+
+        if (authentication.getPrincipal() instanceof OAuth2User oAuth2User) {
+            return oAuth2User.getAttribute("email");
+        }
+
+        return authentication.getName();
+    }
+
 }

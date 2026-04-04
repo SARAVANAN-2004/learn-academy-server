@@ -6,6 +6,8 @@ import com.example.learnacademy.repository.UserRepository;
 import com.example.learnacademy.service.CourseService;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
@@ -155,5 +157,124 @@ public class CourseController {
         Long userId = getUserId(authentication);
 
         return service.instructorDashboard(userId);
+    }
+
+    @GetMapping("/instructor/courses")
+    public List<Map<String, Object>> instructorCourses(Authentication authentication) {
+        Long userId = getUserId(authentication);
+        return service.getInstructorCourses(userId);
+    }
+
+    @GetMapping("/instructor/courses/{courseId}")
+    public Map<String, Object> instructorCourse(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.getInstructorCourse(userId, courseId);
+    }
+
+    @GetMapping("/instructor/courses/{courseId}/content")
+    public Map<String, Object> instructorCourseContent(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.getInstructorCourseContent(userId, courseId);
+    }
+
+    @PutMapping("/instructor/courses/{courseId}")
+    public Map<String, Object> updateInstructorCourse(
+            @PathVariable Long courseId,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.updateInstructorCourse(userId, courseId, body);
+    }
+
+    @PutMapping("/instructor/courses/{courseId}/content")
+    public Map<String, Object> updateInstructorCourseContent(
+            @PathVariable Long courseId,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.updateInstructorCourseContent(userId, courseId, body);
+    }
+
+    @DeleteMapping("/instructor/courses/{courseId}")
+    public Map<String, Object> deleteInstructorCourse(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.deleteInstructorCourse(userId, courseId);
+    }
+
+    @DeleteMapping("/instructor/courses")
+    public Map<String, Object> bulkDeleteInstructorCourses(
+            @RequestBody Map<String, List<Long>> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.deleteInstructorCourses(userId, body.get("courseIds"));
+    }
+
+    @PostMapping("/instructor/courses/delete")
+    public Map<String, Object> bulkDeleteInstructorCoursesPost(
+            @RequestBody Map<String, List<Long>> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.deleteInstructorCourses(userId, body.get("courseIds"));
+    }
+
+    @PostMapping("/instructor/courses/export")
+    public ResponseEntity<byte[]> exportInstructorCourses(
+            @RequestParam String format,
+            @RequestBody Map<String, List<Long>> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        CourseService.ExportFile exportFile =
+                service.exportInstructorCourses(userId, body.get("courseIds"), format);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + exportFile.fileName() + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, exportFile.contentType())
+                .body(exportFile.content());
+    }
+
+    @GetMapping("/instructor/course-report")
+    public List<Map<String, Object>> instructorCourseReport(Authentication authentication) {
+        Long userId = getUserId(authentication);
+        return service.getInstructorCourseReports(userId);
+    }
+
+    @DeleteMapping("/instructor/courses/{courseId}/users/{enrolledUserId}")
+    public Map<String, Object> removeUserFromCourse(
+            @PathVariable Long courseId,
+            @PathVariable Long enrolledUserId,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        return service.removeUserFromInstructorCourse(userId, courseId, enrolledUserId);
+    }
+
+    @PostMapping("/instructor/course-report/export")
+    public ResponseEntity<byte[]> exportInstructorCourseReport(
+            @RequestParam String format,
+            @RequestBody Map<String, List<Long>> body,
+            Authentication authentication) {
+
+        Long userId = getUserId(authentication);
+        CourseService.ExportFile exportFile =
+                service.exportInstructorCourseReports(userId, body.get("courseIds"), format);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + exportFile.fileName() + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, exportFile.contentType())
+                .body(exportFile.content());
     }
 }

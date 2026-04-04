@@ -2,6 +2,8 @@ package com.example.learnacademy.model;
 
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "user_courses")
 public class UserCourse {
@@ -15,6 +17,9 @@ public class UserCourse {
 
     @Column(name = "course_id")
     private Long courseId;
+
+    @Column(name = "enrolled_at")
+    private LocalDateTime enrolledAt;
 
     // ===== Getters =====
 
@@ -30,6 +35,10 @@ public class UserCourse {
         return courseId;
     }
 
+    public LocalDateTime getEnrolledAt() {
+        return enrolledAt;
+    }
+
     // ===== Setters =====
 
     public void setId(Long id) {
@@ -42,5 +51,9 @@ public class UserCourse {
 
     public void setCourseId(Long courseId) {
         this.courseId = courseId;
+    }
+
+    public void setEnrolledAt(LocalDateTime enrolledAt) {
+        this.enrolledAt = enrolledAt;
     }
 }
