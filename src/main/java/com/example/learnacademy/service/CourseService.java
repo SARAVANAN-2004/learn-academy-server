@@ -276,9 +276,33 @@ public class CourseService {
 
         Integer totalLessons = jdbc.queryForObject(
                 """
-                SELECT COALESCE(SUM(jsonb_array_length(section->'lessons')),0)
-                FROM course_contents,
-                jsonb_array_elements(content) AS section
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN jsonb_typeof(content) = 'array' THEN (
+                            SELECT COALESCE(SUM(
+                                CASE
+                                    WHEN jsonb_typeof(section->'lessons') = 'array'
+                                    THEN jsonb_array_length(section->'lessons')
+                                    ELSE 0
+                                END
+                            ), 0)
+                            FROM jsonb_array_elements(content) AS section
+                        )
+                        WHEN jsonb_typeof(content) = 'object'
+                             AND jsonb_typeof(content->'sections') = 'array' THEN (
+                            SELECT COALESCE(SUM(
+                                CASE
+                                    WHEN jsonb_typeof(section->'lessons') = 'array'
+                                    THEN jsonb_array_length(section->'lessons')
+                                    ELSE 0
+                                END
+                            ), 0)
+                            FROM jsonb_array_elements(content->'sections') AS section
+                        )
+                        ELSE 0
+                    END
+                ), 0)
+                FROM course_contents
                 WHERE course_id IN (""" + inSql + ")",
                 params,
                 Integer.class
@@ -289,6 +313,10 @@ public class CourseService {
                 params,
                 Integer.class
         );
+
+        totalStudents = totalStudents == null ? 0 : totalStudents;
+        totalLessons = totalLessons == null ? 0 : totalLessons;
+        completedLessons = completedLessons == null ? 0 : completedLessons;
 
         double avgCompletion = 0;
         if (totalLessons != null && totalLessons != 0) {
