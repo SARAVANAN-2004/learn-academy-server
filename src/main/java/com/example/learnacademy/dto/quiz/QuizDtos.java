@@ -6,6 +6,7 @@ import com.example.learnacademy.model.quiz.QuestionType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public final class QuizDtos {
 
@@ -75,6 +76,17 @@ public final class QuizDtos {
     ) {
     }
 
+    public record BulkTestActionRequest(
+            List<Long> testIds
+    ) {
+    }
+
+    public record TestExportRequest(
+            String format,
+            List<Long> testIds
+    ) {
+    }
+
     public record TestResponse(
             Long id,
             Long courseId,
@@ -88,7 +100,33 @@ public final class QuizDtos {
             Integer maxTabSwitch,
             Long createdBy,
             LocalDateTime createdAt,
-            List<SectionResponse> sections
+            List<SectionResponse> sections,
+            TestAnalysisResponse analysis
+    ) {
+    }
+
+    public record TestAnalysisResponse(
+            Integer totalSections,
+            Integer totalQuestions,
+            BigDecimal totalQuestionMarks,
+            Long totalEnrollments,
+            Long totalUsersStarted,
+            Long totalUsersSubmitted,
+            Integer totalAttempts,
+            Integer submittedAttempts,
+            BigDecimal averageScore,
+            BigDecimal highestScore,
+            Map<String, Long> questionTypeBreakdown,
+            List<SectionAnalysisResponse> sectionAnalysis
+    ) {
+    }
+
+    public record SectionAnalysisResponse(
+            Long sectionId,
+            String title,
+            Integer sectionOrder,
+            Integer questionCount,
+            BigDecimal totalMarks
     ) {
     }
 

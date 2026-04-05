@@ -332,13 +332,19 @@ public class CourseService {
         SELECT
             c.id,
             c.title,
-            COUNT(DISTINCT uc.user_id) AS students,
-            COUNT(lp.id) FILTER (WHERE lp.completed = true) AS completed_lessons
+            COALESCE((
+                SELECT COUNT(DISTINCT uc.user_id)
+                FROM user_courses uc
+                WHERE uc.course_id = c.id
+            ), 0) AS students,
+            COALESCE((
+                SELECT COUNT(*)
+                FROM lesson_progress lp
+                WHERE lp.course_id = c.id AND lp.completed = true
+            ), 0) AS completed_lessons
         FROM courses c
-        LEFT JOIN user_courses uc ON c.id = uc.course_id
-        LEFT JOIN lesson_progress lp ON c.id = lp.course_id
         WHERE c.user_id = ?
-        GROUP BY c.id, c.title
+        ORDER BY c.id
     """, (rs, rowNum) -> {
             Map<String, Object> m = new HashMap<>();
             m.put("courseId", rs.getLong("id"));
@@ -552,8 +558,8 @@ public class CourseService {
     @Transactional
     public Map<String, Object> removeUserFromInstructorCourse(Long instructorId, Long courseId, Long enrolledUserId) {
         Course course = getOwnedCourseOrThrow(instructorId, courseId);
-        userCourseRepo.deleteByUserIdAndCourseId(enrolledUserId, courseId);
         progressRepo.deleteByUserIdAndCourseId(enrolledUserId, courseId);
+        userCourseRepo.deleteByUserIdAndCourseId(enrolledUserId, courseId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "User removed from course successfully");

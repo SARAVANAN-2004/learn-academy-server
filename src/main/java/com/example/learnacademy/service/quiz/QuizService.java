@@ -18,9 +18,11 @@ import com.example.learnacademy.dto.quiz.QuizDtos.QuestionResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.ResultResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.ResultSectionResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.SaveAnswerRequest;
+import com.example.learnacademy.dto.quiz.QuizDtos.SectionAnalysisResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.SectionQuestionResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.SectionResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.TabSwitchResponse;
+import com.example.learnacademy.dto.quiz.QuizDtos.TestAnalysisResponse;
 import com.example.learnacademy.dto.quiz.QuizDtos.TestResponse;
 import com.example.learnacademy.model.Course;
 import com.example.learnacademy.model.User;
@@ -33,6 +35,7 @@ import com.example.learnacademy.model.quiz.QuestionType;
 import com.example.learnacademy.model.quiz.QuizTest;
 import com.example.learnacademy.model.quiz.SectionProgress;
 import com.example.learnacademy.model.quiz.TestAttempt;
+import com.example.learnacademy.model.quiz.TestEnrollment;
 import com.example.learnacademy.model.quiz.TestSection;
 import com.example.learnacademy.repository.CourseRepository;
 import com.example.learnacademy.repository.UserRepository;
@@ -43,24 +46,42 @@ import com.example.learnacademy.repository.quiz.QuestionRepository;
 import com.example.learnacademy.repository.quiz.QuizTestRepository;
 import com.example.learnacademy.repository.quiz.SectionProgressRepository;
 import com.example.learnacademy.repository.quiz.TestAttemptRepository;
+import com.example.learnacademy.repository.quiz.TestEnrollmentRepository;
 import com.example.learnacademy.repository.quiz.TestSectionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -80,6 +101,9 @@ public class QuizService {
 
     @Autowired
     private TestAttemptRepository testAttemptRepository;
+
+    @Autowired
+    private TestEnrollmentRepository testEnrollmentRepository;
 
     @Autowired
     private AttemptAnswerRepository attemptAnswerRepository;
@@ -435,6 +459,189 @@ public class QuizService {
         return new LeaderboardResponse(testId, rows);
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getAvailableTests(Long userId) {
+        Set<Long> enrolledTestIds = testEnrollmentRepository.findByUserId(userId).stream()
+                .map(enrollment -> enrollment.getTest().getId())
+                .collect(Collectors.toSet());
+
+        return quizTestRepository.findAll().stream()
+                .filter(test -> !enrolledTestIds.contains(test.getId()))
+                .map(test -> buildDashboardTestItem(test, false))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getMyTests(Long userId) {
+        return testEnrollmentRepository.findByUserId(userId).stream()
+                .map(TestEnrollment::getTest)
+                .map(test -> buildDashboardTestItem(test, true))
+                .toList();
+    }
+
+    @Transactional
+    public void enrollInTest(Long userId, Long testId) {
+        User user = getUserOrThrow(userId);
+        QuizTest test = quizTestRepository.findById(testId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Test not found"));
+
+        if (testEnrollmentRepository.findByUserIdAndTestId(userId, testId).isPresent()) {
+            return;
+        }
+
+        TestEnrollment enrollment = new TestEnrollment();
+        enrollment.setUser(user);
+        enrollment.setTest(test);
+        testEnrollmentRepository.save(enrollment);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getInstructorTests(Long instructorId) {
+        return quizTestRepository.findAll().stream()
+                .filter(test -> Objects.equals(test.getCreatedBy().getId(), instructorId))
+                .map(this::buildInstructorTestSummary)
+                .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> updateInstructorTest(Long instructorId, Long testId, Map<String, Object> body) {
+        QuizTest test = getOwnedTestOrThrow(instructorId, testId);
+
+        if (body.containsKey("title")) {
+            test.setTitle(String.valueOf(body.get("title")));
+        }
+        if (body.containsKey("description")) {
+            test.setDescription(body.get("description") == null ? null : String.valueOf(body.get("description")));
+        }
+        if (body.containsKey("timeLimit")) {
+            test.setTimeLimit(Integer.valueOf(String.valueOf(body.get("timeLimit"))));
+        }
+        if (body.containsKey("negativeMarkingEnabled") || body.containsKey("hasNegativeMarking")) {
+            Object value = body.containsKey("negativeMarkingEnabled")
+                    ? body.get("negativeMarkingEnabled")
+                    : body.get("hasNegativeMarking");
+            test.setNegativeMarkingEnabled(Boolean.valueOf(String.valueOf(value)));
+        }
+        if (body.containsKey("negativeMarkValue")) {
+            test.setNegativeMarkValue(new BigDecimal(String.valueOf(body.get("negativeMarkValue"))));
+        }
+        if (body.containsKey("strictModeEnabled") || body.containsKey("isStrictMode")) {
+            Object value = body.containsKey("strictModeEnabled")
+                    ? body.get("strictModeEnabled")
+                    : body.get("isStrictMode");
+            test.setStrictModeEnabled(Boolean.valueOf(String.valueOf(value)));
+        }
+        if (body.containsKey("maxTabSwitch") || body.containsKey("maxTabSwitches")) {
+            Object value = body.containsKey("maxTabSwitch")
+                    ? body.get("maxTabSwitch")
+                    : body.get("maxTabSwitches");
+            test.setMaxTabSwitch(Integer.valueOf(String.valueOf(value)));
+        }
+
+        return buildInstructorTestSummary(quizTestRepository.save(test));
+    }
+
+    @Transactional
+    public Map<String, Object> deleteInstructorTest(Long instructorId, Long testId) {
+        QuizTest test = getOwnedTestOrThrow(instructorId, testId);
+        quizTestRepository.delete(test);
+        return Map.of("message", "Test deleted successfully", "deletedTestId", testId);
+    }
+
+    @Transactional
+    public Map<String, Object> deleteInstructorTests(Long instructorId, List<Long> testIds) {
+        if (testIds == null || testIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "testIds are required");
+        }
+        List<QuizTest> ownedTests = getOwnedTestsForAction(instructorId, testIds);
+        List<Long> deletedTestIds = ownedTests.stream()
+                .map(QuizTest::getId)
+                .toList();
+
+        quizTestRepository.deleteAll(ownedTests);
+
+        return Map.of(
+                "message", "Tests deleted successfully",
+                "deletedTestIds", deletedTestIds,
+                "deletedCount", deletedTestIds.size()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> instructorTestDashboard(Long instructorId) {
+        List<QuizTest> tests = quizTestRepository.findAll().stream()
+                .filter(test -> Objects.equals(test.getCreatedBy().getId(), instructorId))
+                .toList();
+
+        int totalTests = tests.size();
+        int totalTestEnrollments = tests.stream()
+                .mapToInt(test -> (int) testEnrollmentRepository.countByTestId(test.getId()))
+                .sum();
+
+        List<TestAttempt> attempts = tests.stream()
+                .flatMap(test -> testAttemptRepository.findByTestIdAndStatusOrderByScoreDescStartedAtAsc(
+                                test.getId(), AttemptStatus.SUBMITTED)
+                        .stream())
+                .toList();
+
+        BigDecimal averageScore = attempts.isEmpty()
+                ? BigDecimal.ZERO
+                : attempts.stream()
+                .map(TestAttempt::getScore)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(attempts.size()), 2, RoundingMode.HALF_UP);
+
+        List<Map<String, Object>> testAnalytics = tests.stream()
+                .map(this::buildInstructorTestSummary)
+                .toList();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalTests", totalTests);
+        result.put("totalTestEnrollments", totalTestEnrollments);
+        result.put("totalSubmittedAttempts", attempts.size());
+        result.put("averageTestScore", averageScore);
+        result.put("testAnalytics", testAnalytics);
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getInstructorTestReports(Long instructorId) {
+        return quizTestRepository.findAll().stream()
+                .filter(test -> Objects.equals(test.getCreatedBy().getId(), instructorId))
+                .map(this::buildInstructorTestReport)
+                .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> removeUserFromInstructorTest(Long instructorId, Long testId, Long enrolledUserId) {
+        QuizTest test = getOwnedTestOrThrow(instructorId, testId);
+        List<TestAttempt> attempts = testAttemptRepository.findByTestIdAndUserId(testId, enrolledUserId);
+        testAttemptRepository.deleteAll(attempts);
+        testEnrollmentRepository.deleteByUserIdAndTestId(enrolledUserId, testId);
+
+        return Map.of(
+                "message", "User removed from test successfully",
+                "testId", test.getId(),
+                "removedUserId", enrolledUserId
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ExportFile exportInstructorTests(Long instructorId, List<Long> testIds, String format) {
+        List<Map<String, Object>> rows = getOwnedTestsForExport(instructorId, testIds).stream()
+                .map(this::buildInstructorTestSummary)
+                .toList();
+        return exportTestRows(rows, format, "tests");
+    }
+
+    @Transactional(readOnly = true)
+    public ExportFile exportInstructorTestReports(Long instructorId, List<Long> testIds, String format) {
+        List<Map<String, Object>> reports = getOwnedTestsForExport(instructorId, testIds).stream()
+                .map(this::buildInstructorTestReport)
+                .toList();
+        return exportTestReportRows(reports, format, "test-report");
+    }
+
     private void validateCreateTestRequest(CreateTestRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
@@ -725,6 +932,7 @@ public class QuizService {
         List<SectionResponse> sectionResponses = sections.stream()
                 .map(section -> toSectionResponse(section, true))
                 .toList();
+        TestAnalysisResponse analysis = buildTestAnalysis(test, sections);
 
         return new TestResponse(
                 test.getId(),
@@ -739,8 +947,414 @@ public class QuizService {
                 test.getMaxTabSwitch(),
                 test.getCreatedBy().getId(),
                 test.getCreatedAt(),
-                sectionResponses
+                sectionResponses,
+                analysis
         );
+    }
+
+    private TestAnalysisResponse buildTestAnalysis(QuizTest test, List<TestSection> sections) {
+        List<TestAttempt> attempts = testAttemptRepository.findByTestId(test.getId());
+        long totalEnrollments = testEnrollmentRepository.countByTestId(test.getId());
+        long totalUsersStarted = attempts.stream()
+                .map(attempt -> attempt.getUser().getId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+
+        List<TestAttempt> submittedAttempts = attempts.stream()
+                .filter(attempt -> attempt.getStatus() == AttemptStatus.SUBMITTED
+                        || attempt.getStatus() == AttemptStatus.AUTO_SUBMITTED)
+                .toList();
+
+        long totalUsersSubmitted = submittedAttempts.stream()
+                .map(attempt -> attempt.getUser().getId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+
+        BigDecimal averageScore = submittedAttempts.isEmpty()
+                ? BigDecimal.ZERO
+                : submittedAttempts.stream()
+                .map(TestAttempt::getScore)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(submittedAttempts.size()), 2, RoundingMode.HALF_UP);
+
+        BigDecimal highestScore = submittedAttempts.stream()
+                .map(TestAttempt::getScore)
+                .filter(Objects::nonNull)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+
+        LinkedHashMap<String, Long> questionTypeBreakdown = new LinkedHashMap<>();
+        List<SectionAnalysisResponse> sectionAnalysis = new ArrayList<>();
+        int totalQuestions = 0;
+        BigDecimal totalQuestionMarks = BigDecimal.ZERO;
+
+        for (TestSection section : sections) {
+            List<Question> questions = questionRepository.findBySectionIdOrderByQuestionOrderAsc(section.getId());
+            totalQuestions += questions.size();
+
+            BigDecimal sectionTotalMarks = questions.stream()
+                    .map(Question::getMarks)
+                    .map(this::safeNumber)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            totalQuestionMarks = totalQuestionMarks.add(sectionTotalMarks);
+
+            for (Question question : questions) {
+                String type = question.getQuestionType() == null ? "UNKNOWN" : question.getQuestionType().name();
+                questionTypeBreakdown.merge(type, 1L, Long::sum);
+            }
+
+            sectionAnalysis.add(new SectionAnalysisResponse(
+                    section.getId(),
+                    section.getTitle(),
+                    section.getSectionOrder(),
+                    questions.size(),
+                    sectionTotalMarks
+            ));
+        }
+
+        return new TestAnalysisResponse(
+                sections.size(),
+                totalQuestions,
+                totalQuestionMarks,
+                totalEnrollments,
+                totalUsersStarted,
+                totalUsersSubmitted,
+                attempts.size(),
+                submittedAttempts.size(),
+                averageScore,
+                highestScore,
+                questionTypeBreakdown,
+                sectionAnalysis
+        );
+    }
+
+    private Map<String, Object> buildDashboardTestItem(QuizTest test, boolean enrolled) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", test.getId());
+        item.put("title", test.getTitle());
+        item.put("description", test.getDescription());
+        item.put("timeLimit", test.getTimeLimit());
+        item.put("totalMarks", test.getTotalMarks());
+        item.put("courseId", test.getCourse() == null ? null : test.getCourse().getId());
+        item.put("type", "test");
+        item.put("enrolled", enrolled);
+        item.put("strictModeEnabled", test.getStrictModeEnabled());
+        item.put("negativeMarkingEnabled", test.getNegativeMarkingEnabled());
+        item.put("createdAt", test.getCreatedAt());
+        return item;
+    }
+
+    private Map<String, Object> buildInstructorTestSummary(QuizTest test) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", test.getId());
+        item.put("courseId", test.getCourse() == null ? null : test.getCourse().getId());
+        item.put("title", test.getTitle());
+        item.put("description", test.getDescription());
+        item.put("timeLimit", test.getTimeLimit());
+        item.put("totalMarks", test.getTotalMarks());
+        item.put("negativeMarkingEnabled", test.getNegativeMarkingEnabled());
+        item.put("negativeMarkValue", test.getNegativeMarkValue());
+        item.put("strictModeEnabled", test.getStrictModeEnabled());
+        item.put("maxTabSwitch", test.getMaxTabSwitch());
+        item.put("createdAt", test.getCreatedAt());
+        item.put("type", "test");
+        item.put("enrolledUsers", testEnrollmentRepository.countByTestId(test.getId()));
+        return item;
+    }
+
+    private Map<String, Object> buildInstructorTestReport(QuizTest test) {
+        List<TestEnrollment> enrollments = testEnrollmentRepository.findByTestIdIn(List.of(test.getId()));
+        List<Map<String, Object>> enrolledUsers = enrollments.stream()
+                .map(enrollment -> {
+                    List<TestAttempt> attempts = testAttemptRepository.findByTestIdAndUserId(test.getId(), enrollment.getUser().getId());
+                    BigDecimal bestScore = attempts.stream()
+                            .map(TestAttempt::getScore)
+                            .max(BigDecimal::compareTo)
+                            .orElse(BigDecimal.ZERO);
+                    TestAttempt bestAttempt = attempts.stream()
+                            .max(Comparator
+                                    .comparing(TestAttempt::getScore, Comparator.nullsFirst(BigDecimal::compareTo))
+                                    .thenComparing(TestAttempt::getSubmittedAt, Comparator.nullsLast(LocalDateTime::compareTo))
+                                    .thenComparing(TestAttempt::getStartedAt, Comparator.nullsLast(LocalDateTime::compareTo)))
+                            .orElse(null);
+                    TestAttempt latestAttempt = attempts.stream()
+                            .max(Comparator.comparing(TestAttempt::getStartedAt))
+                            .orElse(null);
+
+                    Map<String, Object> user = new LinkedHashMap<>();
+                    user.put("userId", enrollment.getUser().getId());
+                    user.put("userName", buildUserName(enrollment.getUser()));
+                    user.put("userEmail", enrollment.getUser().getEmail());
+                    user.put("enrolledAt", enrollment.getEnrolledAt());
+                    user.put("attemptsCount", attempts.size());
+                    user.put("bestScore", bestScore);
+                    user.put("latestAttemptStatus", latestAttempt == null ? null : latestAttempt.getStatus().name());
+                    user.put("sectionWiseScore", buildSectionWiseScoreSummary(bestAttempt));
+                    return user;
+                })
+                .toList();
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("testId", test.getId());
+        report.put("testTitle", test.getTitle());
+        report.put("courseId", test.getCourse() == null ? null : test.getCourse().getId());
+        report.put("type", "test");
+        report.put("totalEnrolledUsers", enrollments.size());
+        report.put("enrolledUsers", enrolledUsers);
+        return report;
+    }
+
+    private List<QuizTest> getOwnedTestsForExport(Long instructorId, List<Long> testIds) {
+        return getOwnedTestsForAction(instructorId, testIds);
+    }
+
+    private List<QuizTest> getOwnedTestsForAction(Long instructorId, List<Long> testIds) {
+        List<QuizTest> ownedTests = quizTestRepository.findAll().stream()
+                .filter(test -> Objects.equals(test.getCreatedBy().getId(), instructorId))
+                .toList();
+
+        if (testIds == null || testIds.isEmpty()) {
+            return ownedTests;
+        }
+
+        Set<Long> requested = Set.copyOf(testIds);
+        List<QuizTest> filtered = ownedTests.stream()
+                .filter(test -> requested.contains(test.getId()))
+                .toList();
+
+        if (filtered.size() != requested.size()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "One or more tests do not belong to this instructor");
+        }
+        return filtered;
+    }
+
+    private ExportFile exportTestRows(List<Map<String, Object>> rows, String format, String baseName) {
+        List<String> headers = List.of(
+                "Id", "Title", "CourseId", "TimeLimit", "TotalMarks",
+                "NegativeMarking", "NegativeMarkValue", "StrictMode", "MaxTabSwitch",
+                "EnrolledUsers", "CreatedAt"
+        );
+
+        List<List<Object>> dataRows = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            List<Object> dataRow = new ArrayList<>();
+            dataRow.add(row.get("id"));
+            dataRow.add(row.get("title"));
+            dataRow.add(row.get("courseId"));
+            dataRow.add(row.get("timeLimit"));
+            dataRow.add(row.get("totalMarks"));
+            dataRow.add(row.get("negativeMarkingEnabled"));
+            dataRow.add(row.get("negativeMarkValue"));
+            dataRow.add(row.get("strictModeEnabled"));
+            dataRow.add(row.get("maxTabSwitch"));
+            dataRow.add(row.get("enrolledUsers"));
+            dataRow.add(row.get("createdAt"));
+            dataRows.add(dataRow);
+        }
+
+        return exportTabularData(headers, dataRows, format, baseName, "Instructor Tests");
+    }
+
+    private ExportFile exportTestReportRows(List<Map<String, Object>> reports, String format, String baseName) {
+        List<String> headers = List.of(
+                "TestId", "TestTitle", "UserId", "UserName", "UserEmail",
+                "EnrolledAt", "AttemptsCount", "BestScore", "LatestAttemptStatus", "SectionWiseScore"
+        );
+
+        List<List<Object>> dataRows = new ArrayList<>();
+        for (Map<String, Object> report : reports) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> users = (List<Map<String, Object>>) report.get("enrolledUsers");
+            for (Map<String, Object> user : users) {
+                List<Object> row = new ArrayList<>();
+                row.add(report.get("testId"));
+                row.add(report.get("testTitle"));
+                row.add(user.get("userId"));
+                row.add(user.get("userName"));
+                row.add(user.get("userEmail"));
+                row.add(user.get("enrolledAt"));
+                row.add(user.get("attemptsCount"));
+                row.add(user.get("bestScore"));
+                row.add(user.get("latestAttemptStatus"));
+                row.add(user.get("sectionWiseScore"));
+                dataRows.add(row);
+            }
+        }
+
+        return exportTabularData(headers, dataRows, format, baseName, "Test Report");
+    }
+
+    private ExportFile exportTabularData(
+            List<String> headers,
+            List<List<Object>> rows,
+            String format,
+            String baseName,
+            String title
+    ) {
+        String normalized = format == null ? "" : format.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "csv" -> new ExportFile(baseName + ".csv", "text/csv", buildCsv(headers, rows));
+            case "xlsx" -> new ExportFile(
+                    baseName + ".xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    buildXlsx(headers, rows)
+            );
+            case "pdf" -> new ExportFile(baseName + ".pdf", "application/pdf", buildPdf(title, headers, rows));
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported format. Use csv, xlsx, or pdf");
+        };
+    }
+
+    private byte[] buildCsv(List<String> headers, List<List<Object>> rows) {
+        StringBuilder csv = new StringBuilder();
+        csv.append(String.join(",", headers.stream().map(this::csvValue).toList())).append('\n');
+        for (List<Object> row : rows) {
+            csv.append(String.join(",", row.stream().map(this::csvValue).toList())).append('\n');
+        }
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] buildXlsx(List<String> headers, List<List<Object>> rows) {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            XSSFSheet sheet = workbook.createSheet("Export");
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            CellStyle headerStyle = workbook.createCellStyle();
+            headerStyle.setFont(headerFont);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowIndex = 1;
+            for (List<Object> rowData : rows) {
+                Row row = sheet.createRow(rowIndex++);
+                for (int i = 0; i < rowData.size(); i++) {
+                    row.createCell(i).setCellValue(rowData.get(i) == null ? "" : String.valueOf(rowData.get(i)));
+                }
+            }
+
+            for (int i = 0; i < headers.size(); i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to generate XLSX export", e);
+        }
+    }
+
+    private byte[] buildPdf(String title, List<String> headers, List<List<Object>> rows) {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDType1Font boldFont = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+            PDPageContentStream stream = new PDPageContentStream(document, page);
+            stream.beginText();
+            stream.setFont(boldFont, 14);
+            stream.newLineAtOffset(40, 800);
+            stream.showText(title);
+            stream.setFont(font, 9);
+            stream.newLineAtOffset(0, -20);
+
+            List<String> lines = new ArrayList<>();
+            lines.add(String.join(" | ", headers));
+            for (List<Object> row : rows) {
+                lines.add(String.join(" | ", row.stream().map(value -> value == null ? "" : String.valueOf(value)).toList()));
+            }
+
+            float y = 780;
+            for (String line : lines) {
+                for (String wrapped : wrapText(line, 95)) {
+                    if (y <= 50) {
+                        stream.endText();
+                        stream.close();
+                        page = new PDPage(PDRectangle.A4);
+                        document.addPage(page);
+                        stream = new PDPageContentStream(document, page);
+                        stream.beginText();
+                        stream.setFont(font, 9);
+                        stream.newLineAtOffset(40, 800);
+                        y = 800;
+                    }
+                    stream.showText(wrapped);
+                    stream.newLineAtOffset(0, -12);
+                    y -= 12;
+                }
+            }
+
+            stream.endText();
+            stream.close();
+            document.save(outputStream);
+            return outputStream.toByteArray();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to generate PDF export", e);
+        }
+    }
+
+    private List<String> wrapText(String text, int maxLength) {
+        if (text == null || text.isBlank()) {
+            return List.of("");
+        }
+
+        List<String> lines = new ArrayList<>();
+        String remaining = text;
+        while (remaining.length() > maxLength) {
+            int breakPoint = remaining.lastIndexOf(' ', maxLength);
+            if (breakPoint <= 0) {
+                breakPoint = maxLength;
+            }
+            lines.add(remaining.substring(0, breakPoint));
+            remaining = remaining.substring(breakPoint).trim();
+        }
+        lines.add(remaining);
+        return lines;
+    }
+
+    private String buildSectionWiseScoreSummary(TestAttempt attempt) {
+        if (attempt == null) {
+            return "";
+        }
+
+        List<TestSection> sections = testSectionRepository.findByTestIdOrderBySectionOrderAsc(attempt.getTest().getId());
+        Map<Long, AttemptAnswer> answersByQuestionId = attemptAnswerRepository.findByAttemptId(attempt.getId()).stream()
+                .collect(Collectors.toMap(answer -> answer.getQuestion().getId(), answer -> answer, (a, b) -> b));
+
+        List<String> sectionScores = new ArrayList<>();
+        for (TestSection section : sections) {
+            BigDecimal sectionScore = BigDecimal.ZERO;
+            BigDecimal sectionTotal = BigDecimal.ZERO;
+
+            for (Question question : questionRepository.findBySectionIdOrderByQuestionOrderAsc(section.getId())) {
+                sectionTotal = sectionTotal.add(safeNumber(question.getMarks()));
+                AttemptAnswer answer = answersByQuestionId.get(question.getId());
+                if (!isAttempted(answer)) {
+                    continue;
+                }
+                if (isCorrectAnswer(question, answer)) {
+                    sectionScore = sectionScore.add(safeNumber(question.getMarks()));
+                } else if (Boolean.TRUE.equals(attempt.getTest().getNegativeMarkingEnabled())) {
+                    sectionScore = sectionScore.subtract(safeNumber(attempt.getTest().getNegativeMarkValue()));
+                }
+            }
+
+            sectionScores.add(section.getTitle() + ": " + decimalText(sectionScore) + "/" + decimalText(sectionTotal));
+        }
+
+        return String.join(" | ", sectionScores);
+    }
+
+    private String decimalText(BigDecimal value) {
+        BigDecimal safeValue = safeNumber(value).stripTrailingZeros();
+        return safeValue.scale() < 0 ? safeValue.setScale(0).toPlainString() : safeValue.toPlainString();
     }
 
     private SectionResponse toSectionResponse(TestSection section, boolean includeQuestions) {
@@ -847,5 +1461,13 @@ public class QuizService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private String csvValue(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        return "\"" + text.replace("\"", "\"\"") + "\"";
+    }
+
+    public record ExportFile(String fileName, String contentType, byte[] content) {
     }
 }
