@@ -62,7 +62,7 @@ public class SecurityConfig {
                                     });
 
                             response.sendRedirect(
-                                    "https://learn-academy-web.vercel.app/dashboard"
+                                    "https://learn-academy-web.vercel.app/app/dashboard"
                             );
                         })
                 )
